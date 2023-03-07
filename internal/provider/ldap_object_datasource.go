@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"github.com/go-ldap/ldap/v3"
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/path"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
@@ -24,6 +26,9 @@ type LDAPObjectDataSource struct {
 type LDAPObjectDatasourceModel struct {
 	Id            types.String `tfsdk:"id"`
 	DN            types.String `tfsdk:"dn"`
+	BaseDN        types.String `tfsdk:"base_dn"`
+	Scope         types.String `tfsdk:"scope"`
+	Filter        types.String `tfsdk:"filter"`
 	ObjectClasses types.List   `tfsdk:"object_classes"`
 	Attributes    types.Map    `tfsdk:"attributes"`
 }
@@ -42,7 +47,30 @@ func (L *LDAPObjectDataSource) Schema(_ context.Context, _ datasource.SchemaRequ
 			},
 			"dn": schema.StringAttribute{
 				MarkdownDescription: "DN of this ldap object",
-				Required:            true,
+				Optional:            true,
+				Computed:            true,
+				Validators: []validator.String{
+					stringvalidator.ExactlyOneOf(path.MatchRelative().AtParent().AtName("base_dn")),
+				},
+			},
+			"base_dn": schema.StringAttribute{
+				MarkdownDescription: "Base DN to use to search for the ldap object",
+				Optional:            true,
+			},
+			"scope": schema.StringAttribute{
+				MarkdownDescription: "Scope to use to search for the ldap object",
+				Optional:            true,
+				Validators: []validator.String{
+					stringvalidator.OneOf("baseObject", "singleLevel", "wholeSubtree"),
+					stringvalidator.ConflictsWith(path.MatchRelative().AtParent().AtName("dn")),
+				},
+			},
+			"filter": schema.StringAttribute{
+				MarkdownDescription: "Filter to use to search for the ldap object",
+				Optional:            true,
+				Validators: []validator.String{
+					stringvalidator.ConflictsWith(path.MatchRelative().AtParent().AtName("dn")),
+				},
 			},
 			"object_classes": schema.ListAttribute{
 				MarkdownDescription: "A list of classes this object implements",
@@ -88,16 +116,45 @@ func (L *LDAPObjectDataSource) Read(ctx context.Context, request datasource.Read
 		return
 	}
 
-	response.State.SetAttribute(ctx, path.Root("id"), data.DN)
-	response.State.SetAttribute(ctx, path.Root("dn"), data.DN)
+	var baseDn string
 
-	if entry, err := GetEntry(L.conn, data.DN.ValueString(), ldap.ScopeBaseObject, "(&)"); err != nil {
+	if data.DN.IsUnknown() || data.DN.IsNull() {
+		baseDn = data.BaseDN.ValueString()
+	} else {
+		baseDn = data.DN.ValueString()
+	}
+
+	var scope int
+
+	if data.Scope.IsUnknown() || data.Scope.IsNull() {
+		scope = ldap.ScopeBaseObject
+	} else {
+		switch data.Scope.ValueString() {
+		case "baseObject":
+			scope = ldap.ScopeBaseObject
+		case "singleLevel":
+			scope = ldap.ScopeSingleLevel
+		case "wholeSubtree":
+			scope = ldap.ScopeWholeSubtree
+		}
+	}
+
+	var filter string
+
+	if data.Filter.IsUnknown() || data.Filter.IsNull() {
+		filter = "(&)"
+	} else {
+		filter = data.Filter.ValueString()
+	}
+
+	if entry, err := GetEntry(L.conn, baseDn, scope, filter); err != nil {
 		response.Diagnostics.AddError(
 			"Can not read entry",
 			err.Error(),
 		)
 	} else {
 		response.State.SetAttribute(ctx, path.Root("dn"), entry.DN)
+		response.State.SetAttribute(ctx, path.Root("id"), entry.DN)
 		for _, attribute := range entry.Attributes {
 			if attribute.Name == "objectClass" {
 				response.State.SetAttribute(ctx, path.Root("object_classes"), attribute.Values)
