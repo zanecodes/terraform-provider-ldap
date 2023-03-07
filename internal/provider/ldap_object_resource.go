@@ -116,7 +116,7 @@ func (L *LDAPObjectResource) Read(ctx context.Context, request resource.ReadRequ
 		return
 	}
 
-	if entry, err := GetEntry(L.conn, data.DN.ValueString()); err != nil {
+	if entry, err := GetEntry(L.conn, data.DN.ValueString(), ldap.ScopeBaseObject, "(&)"); err != nil {
 		response.Diagnostics.AddError(
 			"Can not read entry",
 			err.Error(),
@@ -225,7 +225,7 @@ func (L *LDAPObjectResource) Delete(ctx context.Context, request resource.Delete
 }
 
 func (L *LDAPObjectResource) ImportState(ctx context.Context, request resource.ImportStateRequest, response *resource.ImportStateResponse) {
-	if entry, err := GetEntry(L.conn, request.ID); err != nil {
+	if entry, err := GetEntry(L.conn, request.ID, ldap.ScopeBaseObject, "(&)"); err != nil {
 		response.Diagnostics.AddError(
 			"Can not read entry",
 			err.Error(),

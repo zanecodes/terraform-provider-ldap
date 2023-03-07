@@ -91,7 +91,7 @@ func (L *LDAPObjectDataSource) Read(ctx context.Context, request datasource.Read
 	response.State.SetAttribute(ctx, path.Root("id"), data.DN)
 	response.State.SetAttribute(ctx, path.Root("dn"), data.DN)
 
-	if entry, err := GetEntry(L.conn, data.DN.ValueString()); err != nil {
+	if entry, err := GetEntry(L.conn, data.DN.ValueString(), ldap.ScopeBaseObject, "(&)"); err != nil {
 		response.Diagnostics.AddError(
 			"Can not read entry",
 			err.Error(),
