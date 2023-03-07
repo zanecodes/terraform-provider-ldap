@@ -28,3 +28,27 @@ const testDataSource = `
 data "ldap_object" "test" {
 	dn = "dc=example,dc=com"
 }`
+
+func TestLDAPObjectDatasourceFilter(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			testAccPreCheck(t)
+		},
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testDataSourceFilter,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("data.ldap_object.test", "dn", "dc=example,dc=com"),
+					resource.TestCheckResourceAttr("data.ldap_object.test", "object_classes.#", "3"),
+					resource.TestCheckResourceAttr("data.ldap_object.test", "attributes.dc.0", "example"),
+				),
+			},
+		},
+	})
+}
+
+const testDataSourceFilter = `
+data "ldap_object" "test" {
+	base_dn = "dc=example,dc=com"
+}`
